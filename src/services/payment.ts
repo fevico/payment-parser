@@ -103,7 +103,7 @@ export const processPaymentInstruction = (
     result.status_code = STATUS_CODES.CU02;
     result.accounts = [debitAcc, creditAcc].map(a => ({
       id: a.id,
-      balance: a.balance,
+      balance: a.balance, 
       balance_before: a.balance,
       currency: a.currency.toUpperCase(),
     }));

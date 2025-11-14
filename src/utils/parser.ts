@@ -1,4 +1,3 @@
-// src/utils/parser.ts
 import { ParsedInstruction } from '../types';
 
 export const SUPPORTED_CURRENCIES = ['NGN', 'USD', 'GBP', 'GHS'] as const;
@@ -13,8 +12,7 @@ const KW = {
 } as const;
 
 /**
- * Split a string into words **without any regex**.
- * Handles spaces, tabs, new-lines, carriage-returns.
+ * Split string into words without regex
  */
 function splitIntoWords(s: string): string[] {
   const words: string[] = [];
@@ -35,7 +33,7 @@ function splitIntoWords(s: string): string[] {
 }
 
 /**
- * Account-ID validation – only letters, digits, -, ., @
+ * Validate account ID: letters, digits, -, ., 
  */
 function isValidAccountId(id: string): boolean {
   if (!id) return false;
@@ -50,9 +48,10 @@ function isValidAccountId(id: string): boolean {
 }
 
 /**
- * Strict YYYY-MM-DD validation (no regex)
+ * Strict YYYY-MM-DD validation
  */
 function isValidDateFormat(dateStr: string): boolean {
+  if (dateStr.length !== 10) return false;
   const parts = dateStr.split('-');
   if (parts.length !== 3) return false;
   const [yStr, mStr, dStr] = parts;
@@ -60,11 +59,7 @@ function isValidDateFormat(dateStr: string): boolean {
   const m = Number(mStr);
   const d = Number(dStr);
   if (isNaN(y) || isNaN(m) || isNaN(d)) return false;
-
-  // basic range checks
   if (y < 1000 || y > 9999 || m < 1 || m > 12 || d < 1 || d > 31) return false;
-
-  // build a real UTC date and verify it matches the input
   const date = new Date(Date.UTC(y, m - 1, d));
   return (
     date.getUTCFullYear() === y &&
@@ -73,9 +68,7 @@ function isValidDateFormat(dateStr: string): boolean {
   );
 }
 
-/* --------------------------------------------------------------------- */
 /*                         MAIN PARSER                                   */
-/* --------------------------------------------------------------------- */
 export const parseInstruction = (instruction: string): ParsedInstruction => {
   const result: ParsedInstruction = {
     type: null,
@@ -94,7 +87,7 @@ export const parseInstruction = (instruction: string): ParsedInstruction => {
 
   const upper = words.map(w => w.toUpperCase());
 
-  /* ----- detect DEBIT / CREDIT ----- */
+  // Find DEBIT or CREDIT
   const debitPos = upper.indexOf(KW.DEBIT);
   const creditPos = upper.indexOf(KW.CREDIT);
   if (debitPos === -1 && creditPos === -1) return result;
@@ -104,7 +97,7 @@ export const parseInstruction = (instruction: string): ParsedInstruction => {
 
   let pos = isDebit ? debitPos : creditPos;
 
-  /* ----- amount ----- */
+  // Parse amount
   pos += 1;
   if (pos >= words.length) return result;
   const amtStr = words[pos];
@@ -112,35 +105,21 @@ export const parseInstruction = (instruction: string): ParsedInstruction => {
   if (isNaN(amount) || amount <= 0 || amtStr !== String(amount)) return result;
   result.amount = amount;
 
-  /* ----- currency ----- */
+  // Parse currency
   pos += 1;
   if (pos >= words.length) return result;
   const cur = words[pos].toUpperCase();
   if (!SUPPORTED_CURRENCIES.includes(cur as any)) return result;
   result.currency = cur;
 
-  /* ----- expected keyword sequence (null = account id) ----- */
+  // Move to first keyword after currency
+  pos += 1;
+  if (pos >= words.length) return result;
+
+  // Expected sequence
   const seq = isDebit
-    ? [
-        KW.FROM,
-        KW.ACCOUNT,
-        null,
-        KW.FOR,
-        KW.CREDIT,
-        KW.TO,
-        KW.ACCOUNT,
-        null,
-      ]
-    : [
-        KW.TO,
-        KW.ACCOUNT,
-        null,
-        KW.FOR,
-        KW.DEBIT,
-        KW.FROM,
-        KW.ACCOUNT,
-        null,
-      ];
+    ? [KW.FROM, KW.ACCOUNT, null, KW.FOR, KW.CREDIT, KW.TO, KW.ACCOUNT, null]
+    : [KW.TO, KW.ACCOUNT, null, KW.FOR, KW.DEBIT, KW.FROM, KW.ACCOUNT, null];
 
   let acc1: string | null = null;
   let acc2: string | null = null;
@@ -149,10 +128,11 @@ export const parseInstruction = (instruction: string): ParsedInstruction => {
     const expected = seq[i];
     const currentUpper = upper[pos];
 
-    if (expected !== null && currentUpper !== expected) return result;
+    if (expected !== null && currentUpper !== expected) {
+      return result;
+    }
 
     if (expected === null) {
-      // account id
       const id = words[pos];
       if (!isValidAccountId(id)) return result;
       if (acc1 === null) acc1 = id;
@@ -165,16 +145,15 @@ export const parseInstruction = (instruction: string): ParsedInstruction => {
   result.debitAccount = isDebit ? acc1 : acc2;
   result.creditAccount = isDebit ? acc2 : acc1;
 
-  /* ----- optional ON <date> ----- */
+  // Optional ON date
   if (pos < words.length && upper[pos] === KW.ON) {
     pos += 1;
     if (pos < words.length) {
       const dateStr = words[pos];
-      // quick length check before calling the strict validator
       if (dateStr.length === 10 && isValidDateFormat(dateStr)) {
         result.executeBy = dateStr;
       } else {
-        return result; // malformed date → treat as unparseable
+        return result;
       }
     }
   }
